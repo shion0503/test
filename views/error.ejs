@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>エラー - 創作作品共有サイト</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+  <div class="container">
+    <h1>エラーが発生しました</h1>
+    <div class="error-message">
+      <p><%= message %></p>
+      <% if (error.stack && process.env.NODE_ENV === 'development') { %>
+        <pre><%= error.stack %></pre>
+      <% } %>
+    </div>
+    <a href="/" class="button">ホームに戻る</a>
+  </div>
+</body>
+</html>
+

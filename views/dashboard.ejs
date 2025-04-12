@@ -3,6 +3,7 @@
 <head>
   <title>ダッシュボード - 創作作品共有サイト</title>
   <link rel="stylesheet" href="/css/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
   <div class="container">
@@ -21,7 +22,7 @@
           <% } else { %>
             <% myWorks.forEach(work => { %>
               <div class="work-item">
-                <h3><a href="/works/<%= work.id %>"><%= work.title %></a></h3>
+                <h3><a href="/works/<%= work._id %>"><%= work.title %></a></h3>
                 <p class="visibility">
                   公開設定: <%= work.isPublic ? '全体公開' : (work.isFriendsOnly ? '友達のみ' : '非公開') %>
                 </p>
@@ -40,7 +41,7 @@
           <% } else { %>
             <% friendWorks.forEach(work => { %>
               <div class="work-item">
-                <h3><a href="/works/<%= work.id %>"><%= work.title %></a></h3>
+                <h3><a href="/works/<%= work._id %>"><%= work.title %></a></h3>
                 <p class="author">作者: <%= work.authorName %></p>
                 <p class="date">投稿日: <%= new Date(work.createdAt).toLocaleDateString() %></p>
               </div>
@@ -58,9 +59,9 @@
             <% allUsers.forEach(otherUser => { %>
               <div class="user-item">
                 <span><%= otherUser.username %></span>
-                <% if (!user.friends.includes(otherUser.id)) { %>
+                <% if (!user.friends.includes(otherUser._id.toString())) { %>
                   <form action="/add-friend" method="POST">
-                    <input type="hidden" name="friendId" value="<%= otherUser.id %>">
+                    <input type="hidden" name="friendId" value="<%= otherUser._id %>">
                     <button type="submit" class="button small">友達に追加</button>
                   </form>
                 <% } else { %>
@@ -75,3 +76,4 @@
   </div>
 </body>
 </html>
+

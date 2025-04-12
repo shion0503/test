@@ -1,53 +1,46 @@
-// app.js - Express.jsを使用したメインアプリケーションファイル
-
+require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
-const bcrypt = require('bcrypt');
+const MongoStore = require('connect-mongo');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 const path = require('path');
-const fs = require('fs');
+const { User } = require('./models/User');
+const { Work } = require('./models/Work');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// データストア (実際のアプリケーションではデータベースを使用)
-const USERS_FILE = path.join(__dirname, 'data', 'users.json');
-const WORKS_FILE = path.join(__dirname, 'data', 'works.json');
-
-// ディレクトリが存在しない場合は作成
-if (!fs.existsSync(path.join(__dirname, 'data'))) {
-  fs.mkdirSync(path.join(__dirname, 'data'));
-}
-
-// ファイルが存在しない場合は初期化
-if (!fs.existsSync(USERS_FILE)) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify([]));
-}
-if (!fs.existsSync(WORKS_FILE)) {
-  fs.writeFileSync(WORKS_FILE, JSON.stringify([]));
-}
+// MongoDB接続
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log('MongoDB Connected'))
+.catch(err => console.error('MongoDB connection error:', err));
 
 // ミドルウェアの設定
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// セッション設定
 app.use(session({
-  secret: 'your-secret-key',
+  secret: process.env.SESSION_SECRET,
   resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false } // 本番環境ではtrueに設定
+  saveUninitialized: false,
+  store: MongoStore.create({ 
+    mongoUrl: process.env.MONGODB_URI,
+    ttl: 14 * 24 * 60 * 60 // 14日間
+  }),
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 14 * 24 * 60 * 60 * 1000 // 14日間
+  }
 }));
 
 app.set('view engine', 'ejs');
-
-// ユーティリティ関数
-function readDataFile(filePath) {
-  const data = fs.readFileSync(filePath, 'utf8');
-  return JSON.parse(data);
-}
-
-function writeDataFile(filePath, data) {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-}
+app.set('views', path.join(__dirname, 'views'));
 
 // ログイン状態確認ミドルウェア
 function requireLogin(req, res, next) {
@@ -75,15 +68,19 @@ app.get('/login', (req, res) => {
 // ログイン処理
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
-  const users = readDataFile(USERS_FILE);
-  const user = users.find(u => u.username === username);
-
-  if (user && await bcrypt.compare(password, user.password)) {
-    req.session.userId = user.id;
-    req.session.username = user.username;
-    res.redirect('/dashboard');
-  } else {
-    res.render('login', { error: 'ユーザー名またはパスワードが間違っています' });
+  try {
+    const user = await User.findOne({ username });
+    
+    if (user && await bcrypt.compare(password, user.password)) {
+      req.session.userId = user._id;
+      req.session.username = user.username;
+      res.redirect('/dashboard');
+    } else {
+      res.render('login', { error: 'ユーザー名またはパスワードが間違っています' });
+    }
+  } catch (err) {
+    console.error('Login error:', err);
+    res.render('login', { error: 'ログイン処理中にエラーが発生しました' });
   }
 });
 
@@ -100,121 +97,185 @@ app.post('/register', async (req, res) => {
     return res.render('register', { error: 'パスワードが一致しません' });
   }
 
-  const users = readDataFile(USERS_FILE);
-  
-  if (users.some(u => u.username === username)) {
-    return res.render('register', { error: 'このユーザー名は既に使用されています' });
+  try {
+    const existingUser = await User.findOne({ username });
+    
+    if (existingUser) {
+      return res.render('register', { error: 'このユーザー名は既に使用されています' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({
+      username,
+      password: hashedPassword,
+      friends: []
+    });
+
+    await newUser.save();
+
+    req.session.userId = newUser._id;
+    req.session.username = newUser.username;
+    res.redirect('/dashboard');
+  } catch (err) {
+    console.error('Registration error:', err);
+    res.render('register', { error: '登録処理中にエラーが発生しました' });
   }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const newUser = {
-    id: Date.now().toString(),
-    username,
-    password: hashedPassword,
-    friends: []
-  };
-
-  users.push(newUser);
-  writeDataFile(USERS_FILE, users);
-
-  req.session.userId = newUser.id;
-  req.session.username = newUser.username;
-  res.redirect('/dashboard');
 });
 
 // ダッシュボード
-app.get('/dashboard', requireLogin, (req, res) => {
-  const users = readDataFile(USERS_FILE);
-  const works = readDataFile(WORKS_FILE);
-  const currentUser = users.find(u => u.id === req.session.userId);
-  
-  // 自分の作品と友達の作品を取得
-  const myWorks = works.filter(w => w.authorId === currentUser.id);
-  const friendWorks = works.filter(w => 
-    w.isPublic || 
-    (currentUser.friends.includes(w.authorId) && w.isFriendsOnly)
-  );
+app.get('/dashboard', requireLogin, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.session.userId);
+    if (!currentUser) {
+      req.session.destroy();
+      return res.redirect('/login');
+    }
 
-  res.render('dashboard', { 
-    user: currentUser,
-    myWorks,
-    friendWorks,
-    allUsers: users.filter(u => u.id !== currentUser.id)
-  });
+    // 自分の作品を取得
+    const myWorks = await Work.find({ authorId: currentUser._id });
+    
+    // 自分の作品と友達の作品を取得
+    const friendWorks = await Work.find({
+      $or: [
+        { isPublic: true },
+        { 
+          authorId: { $in: currentUser.friends }, 
+          isFriendsOnly: true 
+        }
+      ],
+      authorId: { $ne: currentUser._id } // 自分の作品は除外
+    });
+
+    // 他のユーザーを取得（自分を除く）
+    const allUsers = await User.find({ 
+      _id: { $ne: currentUser._id } 
+    }).select('_id username');
+
+    res.render('dashboard', { 
+      user: currentUser,
+      myWorks,
+      friendWorks,
+      allUsers
+    });
+  } catch (err) {
+    console.error('Dashboard error:', err);
+    res.status(500).send('サーバーエラーが発生しました');
+  }
 });
 
 // 友達追加
-app.post('/add-friend', requireLogin, (req, res) => {
+app.post('/add-friend', requireLogin, async (req, res) => {
   const { friendId } = req.body;
-  const users = readDataFile(USERS_FILE);
-  const currentUser = users.find(u => u.id === req.session.userId);
   
-  if (!currentUser.friends.includes(friendId)) {
-    currentUser.friends.push(friendId);
-    writeDataFile(USERS_FILE, users);
+  try {
+    const currentUser = await User.findById(req.session.userId);
+    
+    if (!currentUser.friends.includes(friendId)) {
+      currentUser.friends.push(friendId);
+      await currentUser.save();
+    }
+    
+    res.redirect('/dashboard');
+  } catch (err) {
+    console.error('Add friend error:', err);
+    res.status(500).send('サーバーエラーが発生しました');
   }
-  
-  res.redirect('/dashboard');
 });
 
 // 新規作品投稿ページ
 app.get('/works/new', requireLogin, (req, res) => {
-  res.render('new-work', { user: { id: req.session.userId, username: req.session.username } });
+  res.render('new-work', { 
+    user: { 
+      id: req.session.userId, 
+      username: req.session.username 
+    } 
+  });
 });
 
 // 作品投稿処理
-app.post('/works', requireLogin, (req, res) => {
+app.post('/works', requireLogin, async (req, res) => {
   const { title, content, visibility } = req.body;
-  const works = readDataFile(WORKS_FILE);
   
-  const newWork = {
-    id: Date.now().toString(),
-    title,
-    content,
-    authorId: req.session.userId,
-    authorName: req.session.username,
-    createdAt: new Date().toISOString(),
-    isPublic: visibility === 'public',
-    isFriendsOnly: visibility === 'friends'
-  };
-  
-  works.push(newWork);
-  writeDataFile(WORKS_FILE, works);
-  
-  res.redirect('/dashboard');
+  try {
+    const newWork = new Work({
+      title,
+      content,
+      authorId: req.session.userId,
+      authorName: req.session.username,
+      isPublic: visibility === 'public',
+      isFriendsOnly: visibility === 'friends'
+    });
+    
+    await newWork.save();
+    res.redirect('/dashboard');
+  } catch (err) {
+    console.error('Create work error:', err);
+    res.status(500).send('作品の投稿中にエラーが発生しました');
+  }
 });
 
 // 作品詳細ページ
-app.get('/works/:id', requireLogin, (req, res) => {
-  const works = readDataFile(WORKS_FILE);
-  const users = readDataFile(USERS_FILE);
-  const work = works.find(w => w.id === req.params.id);
-  const currentUser = users.find(u => u.id === req.session.userId);
-  
-  if (!work) {
-    return res.status(404).send('作品が見つかりません');
+app.get('/works/:id', requireLogin, async (req, res) => {
+  try {
+    const work = await Work.findById(req.params.id);
+    
+    if (!work) {
+      return res.status(404).send('作品が見つかりません');
+    }
+    
+    const currentUser = await User.findById(req.session.userId);
+    
+    // アクセス権チェック
+    const canAccess = 
+      work.isPublic || 
+      work.authorId.toString() === currentUser._id.toString() || 
+      (work.isFriendsOnly && currentUser.friends.includes(work.authorId.toString()));
+    
+    if (!canAccess) {
+      return res.status(403).send('この作品にアクセスする権限がありません');
+    }
+    
+    res.render('work-detail', { work, user: currentUser });
+  } catch (err) {
+    console.error('View work error:', err);
+    res.status(500).send('サーバーエラーが発生しました');
   }
-  
-  // アクセス権チェック
-  const canAccess = 
-    work.isPublic || 
-    work.authorId === currentUser.id || 
-    (work.isFriendsOnly && currentUser.friends.includes(work.authorId));
-  
-  if (!canAccess) {
-    return res.status(403).send('この作品にアクセスする権限がありません');
-  }
-  
-  res.render('work-detail', { work, user: currentUser });
 });
 
 // ログアウト
 app.get('/logout', (req, res) => {
-  req.session.destroy();
-  res.redirect('/');
+  req.session.destroy(err => {
+    if (err) {
+      console.error('Logout error:', err);
+      return res.status(500).send('ログアウト中にエラーが発生しました');
+    }
+    res.redirect('/');
+  });
 });
 
-// サーバー起動
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// エラーハンドリング
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).render('error', { 
+    message: 'サーバーエラーが発生しました',
+    error: process.env.NODE_ENV === 'development' ? err : {}
+  });
 });
+
+// 404ハンドリング
+app.use((req, res) => {
+  res.status(404).render('error', { 
+    message: 'ページが見つかりません',
+    error: {}
+  });
+});
+
+// Vercelではリスニングしない（開発環境のみ）
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+module.exports = app;
+

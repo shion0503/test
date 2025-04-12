@@ -109,8 +109,14 @@ textarea {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 20px;
+}
+
+@media (min-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .section {
@@ -154,7 +160,15 @@ textarea {
 
 .radio-group {
   display: flex;
-  gap: 15px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (min-width: 768px) {
+  .radio-group {
+    flex-direction: row;
+    gap: 15px;
+  }
 }
 
 .badge {
@@ -174,4 +188,20 @@ textarea {
   display: flex;
   gap: 10px;
   margin-top: 20px;
+}
+
+.error-message {
+  margin: 20px 0;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border-left: 4px solid #e74c3c;
+}
+
+.error-message pre {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #f1f1f1;
+  border-radius: 4px;
+  overflow-x: auto;
 }
