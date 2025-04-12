@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title><%= work.title %> - 創作作品共有サイト</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="breadcrumb">
+      <a href="/dashboard">ダッシュボード</a> &gt; 作品詳細
+    </div>
+    <div class="work-header">
+      <h1><%= work.title %></h1>
+      <div class="work-meta">
+        <p class="author">作者: <%= work.authorName %></p>
+        <p class="date">投稿日: <%= new Date(work.createdAt).toLocaleDateString() %></p>
+        <p class="visibility">
+          公開設定: <%= work.isPublic ? '全体公開' : (work.isFriendsOnly ? '友達のみ' : '非公開') %>
+        </p>
+      </div>
+    </div>
+    <div class="work-content">
+      <p><%= work.content %></p>
+    </div>
+    <div class="button-group">
+      <a href="/dashboard" class="button">戻る</a>
+      <% if (work.authorId === user.id) { %>
+        <!-- 編集・削除ボタンは実装時に追加 -->
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

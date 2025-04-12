@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ログイン - 創作作品共有サイト</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>ログイン</h1>
+    <% if (error) { %>
+      <div class="error"><%= error %></div>
+    <% } %>
+    <form action="/login" method="POST">
+      <div class="form-group">
+        <label for="username">ユーザー名:</label>
+        <input type="text" id="username" name="username" required>
+      </div>
+      <div class="form-group">
+        <label for="password">パスワード:</label>
+        <input type="password" id="password" name="password" required>
+      </div>
+      <button type="submit" class="button">ログイン</button>
+    </form>
+    <p>アカウントをお持ちでない方は <a href="/register">こちら</a></p>
+  </div>
+</body>
+</html>

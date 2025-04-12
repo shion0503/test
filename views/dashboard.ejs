@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ダッシュボード - 創作作品共有サイト</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>ようこそ、<%= user.username %>さん</h1>
+      <a href="/logout" class="button">ログアウト</a>
+    </header>
+    
+    <div class="dashboard-grid">
+      <div class="section">
+        <h2>あなたの作品</h2>
+        <a href="/works/new" class="button">新しい作品を投稿</a>
+        <div class="works-list">
+          <% if (myWorks.length === 0) { %>
+            <p>まだ作品がありません。新しい作品を投稿してみましょう！</p>
+          <% } else { %>
+            <% myWorks.forEach(work => { %>
+              <div class="work-item">
+                <h3><a href="/works/<%= work.id %>"><%= work.title %></a></h3>
+                <p class="visibility">
+                  公開設定: <%= work.isPublic ? '全体公開' : (work.isFriendsOnly ? '友達のみ' : '非公開') %>
+                </p>
+                <p class="date">投稿日: <%= new Date(work.createdAt).toLocaleDateString() %></p>
+              </div>
+            <% }) %>
+          <% } %>
+        </div>
+      </div>
+      
+      <div class="section">
+        <h2>友達の作品</h2>
+        <div class="works-list">
+          <% if (friendWorks.length === 0) { %>
+            <p>表示できる友達の作品がありません。</p>
+          <% } else { %>
+            <% friendWorks.forEach(work => { %>
+              <div class="work-item">
+                <h3><a href="/works/<%= work.id %>"><%= work.title %></a></h3>
+                <p class="author">作者: <%= work.authorName %></p>
+                <p class="date">投稿日: <%= new Date(work.createdAt).toLocaleDateString() %></p>
+              </div>
+            <% }) %>
+          <% } %>
+        </div>
+      </div>
+      
+      <div class="section">
+        <h2>友達を追加</h2>
+        <% if (allUsers.length === 0) { %>
+          <p>追加できるユーザーがいません。</p>
+        <% } else { %>
+          <div class="users-list">
+            <% allUsers.forEach(otherUser => { %>
+              <div class="user-item">
+                <span><%= otherUser.username %></span>
+                <% if (!user.friends.includes(otherUser.id)) { %>
+                  <form action="/add-friend" method="POST">
+                    <input type="hidden" name="friendId" value="<%= otherUser.id %>">
+                    <button type="submit" class="button small">友達に追加</button>
+                  </form>
+                <% } else { %>
+                  <span class="badge">友達</span>
+                <% } %>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
